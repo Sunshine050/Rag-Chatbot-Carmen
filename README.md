@@ -1,4 +1,4 @@
-# RAG Chatbot Project
+# Rag-Chatbot-Carmen
 
 RAG (Retrieval-Augmented Generation) Chatbot สำหรับ BlueLedgers Documentation Hub
 
