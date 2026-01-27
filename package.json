@@ -1,0 +1,13 @@
+{
+  "name": "rag-chatbot-project",
+  "version": "1.0.0",
+  "description": "RAG Chatbot with Wiki.js, Git, and ChromaDB integration",
+  "scripts": {
+    "monitor:sync": "node scripts/monitor-sync-status.js",
+    "monitor:sync:watch": "node scripts/monitor-sync-status.js --watch",
+    "watch:sync": "node scripts/watch-sync-logs.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0"
+  }
+}
