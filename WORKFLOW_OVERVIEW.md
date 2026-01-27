@@ -1,6 +1,10 @@
-# 🔄 Workflow Overview: Wiki.js → Git → ChromaDB → RAG
+# 🔄 Workflow Overview: Wiki.js → Git → n8n → ChromaDB → RAG
 
-## 📋 Workflow สมบูรณ์
+เอกสารนี้สรุป **ทั้ง flow** และ **ขั้นตอนการตั้งค่าทีละจุด** ตั้งแต่ Wiki.js → Git → n8n → Backend → ChromaDB → Chatbot
+
+---
+
+## 📋 ภาพรวม Workflow
 
 ```
 ┌─────────────────────┐
@@ -10,7 +14,7 @@
 └──────┬──────────────┘
        │
        │ Auto Sync (ทุก 5 นาที)
-       │ SSH/Basic Auth
+       │ SSH / PAT
        ▼
 ┌─────────────┐
 │   GitHub    │
@@ -19,23 +23,33 @@
 │  -Carmen    │
 └──────┬──────┘
        │
-       │ Option A: ChromaDB Sync (อัตโนมัติ)
-       │ Option B: N8n Webhook Trigger
+       │ n8n Schedule Trigger
+       ▼
+┌─────────────┐      HTTP POST
+│    n8n      │ ───────────────▶  http://localhost:3001/api/import/wiki
+└──────┬──────┘                       (Backend)
+       │
+       ▼
+┌─────────────┐
+│  Backend    │  (NestJS + Ollama)
+│  /api/docs  │  สร้าง embeddings → Chroma
+└──────┬──────┘
+       │
        ▼
 ┌─────────────┐
 │  ChromaDB   │
-│  (Vector DB)│
-│  Cloud      │
+│  rag_docs   │
 └──────┬──────┘
        │
-       │ Query via API
        ▼
 ┌─────────────┐
-│   RAG API   │
-│  (Backend)  │
+│   /api/chat │  (RAG API)
 └──────┬──────┘
        │
-       │ Frontend
+       ▼
+┌─────────────┐
+│  Frontend   │  (Next.js)
+└──────┬──────┘
        ▼
 ┌─────────────┐
 │   User      │
@@ -45,261 +59,177 @@
 
 ---
 
-## ✅ สิ่งที่ทำเสร็จแล้ว
+## 1️⃣ ตั้งค่า Wiki.js ให้ Sync กับ GitHub
 
-### Phase 1: Wiki.js → Git ✅
+### 1.1 เตรียม GitHub Repository
 
-**สถานะ:** ต้องตั้งค่าใหม่ใน Production
+- สร้าง repo: `Sunshine050/Rag-Chatbot-Carmen`
+- แนะนำให้ตั้งเป็น **Public** (เริ่มต้นง่าย)
+- ถ้าใช้ Private:
+  - ต้องสร้าง PAT ที่มี scope `repo`
 
-**การตั้งค่า:**
-- ✅ Wiki.js Production: `https://wiki.semapru.com/`
-- ⏳ Git Storage: ต้องตั้งค่าใหม่ใน Production
-- ✅ Repository: `git@github.com:Sunshine050/Rag-Chatbot-Carmen.git`
-- ✅ Sync Direction: Bi-directional (แนะนำ)
-- ✅ Sync Schedule: ทุก 5 นาที (แนะนำ)
-- ⏳ Status: ต้องตรวจสอบหลังตั้งค่า
+### 1.2 ตั้งค่า Git Storage ใน Wiki.js
 
-**การทำงาน:**
-- เมื่อมีการแก้ไข/สร้างหน้าใหม่ใน Wiki.js
-- Wiki.js จะ auto-push ไป GitHub ทุก 5 นาที
-- หรือสามารถ Force Sync ได้ทันที
+1. เข้า `https://wiki.semapru.com/` ด้วยบัญชี admin
+2. ไปที่ `Administration → Storage → Git`
+3. กด `Add target` หรือแก้ไข target เดิม
 
----
+#### 1.2.1 ค่า Repository / Auth
 
-### Phase 2: Git → ChromaDB (ปัจจุบัน)
+**ถ้าใช้ SSH (แนะนำ):**
 
-**สถานะ:** ใช้ ChromaDB Sync (GitHub Integration)
+- **Authentication Type**: `ssh`
+- **Repository URI**:
+  ```text
+  git@github.com:Sunshine050/Rag-Chatbot-Carmen.git
+  ```
+- **SSH Private Key Mode**: `contents`
+- **SSH Private Key Contents**:
+  - วาง private key ที่มีสิทธิ์ push ไป repo นี้
+  - ห้ามมี passphrase (ไม่งั้น Wiki.js ใช้ไม่ได้)
 
-**การตั้งค่า:**
-- ✅ ChromaDB Cloud: Connected
-- ✅ Collection: `sunshine050_rag_chatbot_carmen_main`
-- ✅ Documents: 160 records (sync จาก GitHub แล้ว)
-- ✅ Embedding Model: `Qwen3-Embedding-0.6B`
-- ✅ Chunk Strategy: `tree_sitter`
+**ถ้าใช้ HTTPS + PAT:**
 
-**การทำงาน (ปัจจุบัน):**
-- ChromaDB มี GitHub Sync feature ที่ sync อัตโนมัติ
-- เมื่อ GitHub มี commit ใหม่ → ChromaDB จะ sync อัตโนมัติ
-- ไม่ต้องใช้ N8n (ถ้าใช้ ChromaDB Sync)
+- **Authentication Type**: `basic`
+- **Repository URI**:
+  ```text
+  https://github.com/Sunshine050/Rag-Chatbot-Carmen.git
+  ```
+- **Username**: `x-access-token` (หรือ GitHub username)
+- **Password / PAT**: GitHub Personal Access Token ที่มี scope `repo`
 
----
+#### 1.2.2 ค่าทั่วไป
 
-### Phase 3: ChromaDB → RAG API ✅
+- **Branch**: `main`
+- **Sync Direction**: `Bi-directional` (แนะนำ)
+- **Sync Schedule**: `Every 5 minutes` (หรือค่าที่ต้องการ)
+- เปิด `Enable` / `Active` ให้ storage target นี้
+- กด **Apply / Save**
 
-**สถานะ:** ตั้งค่าเสร็จแล้ว
+### 1.3 ทดสอบการ Sync
 
-**การตั้งค่า:**
-- ✅ Backend: NestJS API
-- ✅ ChromaDB Service: เชื่อมต่อกับ Cloud
-- ✅ Collection Name: `sunshine050_rag_chatbot_carmen_main`
-- ✅ Ollama: สำหรับ embeddings และ LLM
-- ✅ API Endpoints:
-  - `POST /api/chat` - ถามคำถาม
-  - `POST /api/documents` - เพิ่มเอกสาร
-  - `GET /api/documents/info` - ดู collection info
+1. สร้างหน้าใหม่ใน Wiki.js เช่น `Test Auto Sync`
+2. กด Save / Publish
+3. กลับไปที่ `Administration → Storage → Git`
+4. กดปุ่ม **Force Sync**
+5. เช็ก:
+   - Status เป็นเขียว + ข้อความ `Last synchronization ...`
+   - ใน GitHub repo มีไฟล์ `.md` ใหม่ (เช่น `test-auto-sync.md`)
 
----
-
-## 🔄 Workflow Options
-
-### Option A: ChromaDB Sync (ปัจจุบัน - อัตโนมัติ)
-
-**Workflow:**
-```
-Wiki.js → Git (auto sync ทุก 5 นาที)
-  ↓
-GitHub (commit ใหม่)
-  ↓
-ChromaDB Sync (auto sync จาก GitHub)
-  ↓
-ChromaDB Collection (อัปเดตอัตโนมัติ)
-  ↓
-RAG API (พร้อมใช้งาน)
-```
-
-**ข้อดี:**
-- ✅ ไม่ต้องตั้งค่าเพิ่มเติม
-- ✅ Sync อัตโนมัติ
-- ✅ ใช้งานง่าย
-
-**ข้อเสีย:**
-- ❌ ควบคุม sync timing ไม่ได้ (ขึ้นกับ ChromaDB)
-- ❌ อาจ sync ช้ากว่า N8n
+ถ้าถึงจุดนี้ แสดงว่า **Wiki.js → GitHub** ทำงานถูกต้องแล้ว
 
 ---
 
-### Option B: N8n Webhook Trigger (แนะนำสำหรับ Production)
+## 2️⃣ ตั้งค่า ChromaDB และ Backend
 
-**Workflow:**
+### 2.1 ChromaDB Cloud
+
+ใน ChromaDB Cloud (Database: `Carmen-Iven`) จะได้ค่าต่อไปนี้:
+
+- **Tenant ID** → `CHROMA_TENANT`
+- **Database Name** → `CHROMA_DATABASE` (เช่น `Carmen-Iven`)
+- **API Key** → `CHROMA_API_KEY`
+
+เราใช้ collection ของตัวเองชื่อ **`rag_documents`** (ไม่ใช้ collection auto-sync ของ Chroma เพื่อเลี่ยงปัญหา embedding function)
+
+### 2.2 `.env` ของ Backend (NestJS)
+
+ไฟล์ `Backend/.env` ตัวอย่าง:
+
+```env
+# Ollama Configuration (รันบน Mac เพื่อน ผ่าน ngrok)
+OLLAMA_URL=https://shelba-perorational-datedly.ngrok-free.dev
+EMBEDDING_MODEL=nomic-embed-text
+LLM_MODEL=llama3.2
+
+# ChromaDB Configuration
+CHROMA_API_KEY=...
+CHROMA_TENANT=...
+CHROMA_DATABASE=Carmen-Iven
+CHROMA_COLLECTION_NAME=rag_documents
+
+# Backend
+PORT=3001
+FRONTEND_URL=http://localhost:3000
+
+# Wiki / Git Import
+WIKI_GIT_REPO_URL=git@github.com:Sunshine050/Rag-Chatbot-Carmen.git
+BACKEND_URL=http://localhost:3001
 ```
-Wiki.js → Git (auto sync ทุก 5 นาที)
-  ↓
-GitHub (commit ใหม่)
-  ↓
-GitHub Webhook → N8n
-  ↓
-N8n Workflow:
-  1. Pull จาก GitHub
-  2. Process Markdown files
-  3. Generate embeddings
-  4. Import เข้า ChromaDB (via API)
-  ↓
-ChromaDB Collection (อัปเดต)
-  ↓
-RAG API (พร้อมใช้งาน)
-```
 
-**ข้อดี:**
-- ✅ ควบคุม sync timing ได้เต็มที่
-- ✅ สามารถ process/transform ข้อมูลก่อน import
-- ✅ มี error handling และ retry logic
-- ✅ Monitor และ log ได้ดีกว่า
-- ✅ ใช้ collection เดิม (`rag_documents`) ได้
+> ทดสอบ Ollama: `curl https://...ngrok.../api/tags` ต้องได้รายการโมเดล (`nomic-embed-text`, `llama3.2`)
 
-**ข้อเสีย:**
-- ❌ ต้องตั้งค่า N8n workflow
-- ❌ ต้องเขียน logic สำหรับ import
+### 2.3 โค้ดสำคัญฝั่ง Backend
+
+- `ChromaDBService`:
+  - ใช้ `OllamaService.generateEmbedding(EMBEDDING_MODEL, text)` เพื่อสร้าง embeddings
+  - `addDocument(s)`:
+    - เรียก `generateEmbedding` แล้ว `collection.add({ ids, embeddings, documents, metadatas })`
+  - `search(query)`:
+    - generate embedding ของ query
+    - `collection.query({ queryEmbeddings: [embedding], nResults: topK })`
+
+- `RagService.chat(query, topK)`:
+  - เรียก `ChromaDBService.search` เพื่อได้ context
+  - ต่อ context + question เป็น prompt
+  - เรียก Ollama (`LLM_MODEL`) เพื่อสร้างคำตอบ
+
+- `AppController` (`Backend/src/app.controller.ts`):
+  - `POST /api/chat` → รับ `{ query, topK }`
+  - `POST /api/documents` → ใช้ตอน import docs
+  - `GET /api/documents/info` → ใช้ตรวจจำนวน docs ใน collection
 
 ---
 
-## 🎯 คำตอบสำหรับคำถาม
+## 3️⃣ สคริปต์ Import: Git → ChromaDB (ด้วยมือ)
 
-### Q: เมื่อมีการอัพเดตแก้ไขอะไรใน wiki มันจะอัพเดตไปที่ git อัตโนมัติตามที่เชื่อมต่อไว้แล้ว
+ไฟล์ `Backend/scripts/import-wiki-to-rag.ts` มีหน้าที่:
 
-**A: ✅ ใช่!**
-- Wiki.js จะ auto-sync ไป GitHub ทุก 5 นาที
-- หรือ Force Sync ได้ทันที
+1. อ่าน `.env` → เอา `WIKI_GIT_REPO_URL`, `BACKEND_URL`
+2. ถ้ายังไม่มี `wiki-repo/`:
+   - รัน `git clone WIKI_GIT_REPO_URL wiki-repo`
+3. ถ้ามีอยู่แล้ว:
+   - รัน `git pull` ใน `wiki-repo/`
+4. หาไฟล์ Markdown ทั้งหมด (`*.md`, `*.markdown`)
+5. อ่านเนื้อหาแต่ละไฟล์ → ดึง H1 เป็น title (ถ้ามี)
+6. แบ่งเนื้อหาเป็น chunks ด้วย `CHUNK_SIZE` และ `CHUNK_OVERLAP`
+7. ส่งแต่ละ chunk เข้า Backend:
 
-### Q: Git ก็จะทำการเทียบแล้วอัพเดตเข้าไปที่ Chroma ใช่ไหมโดยใช้ N8n ทำ trigger
-
-**A: ⚠️ ตอนนี้ยังไม่ใช่!**
-
-**สถานะปัจจุบัน:**
-- Git → ChromaDB: ใช้ **ChromaDB Sync** (GitHub Integration) - sync อัตโนมัติ
-- **ยังไม่ได้ใช้ N8n**
-
-**ถ้าต้องการใช้ N8n:**
-- ต้องตั้งค่า GitHub Webhook → N8n
-- สร้าง N8n workflow สำหรับ import
-- ใช้ Backend API (`POST /api/documents`) หรือ import script
-
----
-
-## 📝 สรุป Workflow ปัจจุบัน
-
-### Current Setup (ตอนนี้):
-
-```
-1. Wiki.js → Git ✅
-   - Auto sync ทุก 5 นาที
-   - SSH authentication
-   
-2. Git → ChromaDB ✅
-   - ChromaDB Sync (GitHub Integration)
-   - Auto sync จาก GitHub
-   - Collection: sunshine050_rag_chatbot_carmen_main
-   
-3. ChromaDB → RAG API ✅
-   - Backend เชื่อมต่อ ChromaDB
-   - Collection: sunshine050_rag_chatbot_carmen_main
-   - พร้อมใช้งาน
-```
-
----
-
-## 🚀 ขั้นตอนต่อไป (ถ้าต้องการใช้ N8n)
-
-### Step 1: ตั้งค่า GitHub Webhook
-
-1. ไปที่: https://github.com/Sunshine050/Rag-Chatbot-Carmen/settings/hooks
-2. Add webhook
-3. Payload URL: `https://your-n8n-instance.com/webhook/github-wiki-update`
-4. Content type: `application/json`
-5. Events: `push` (เมื่อมี commit ใหม่)
-6. Active: ✅
-
-### Step 2: สร้าง N8n Workflow
-
-**Workflow Structure:**
-```
-1. Webhook Trigger (GitHub)
-   ↓
-2. Extract commit info
-   ↓
-3. Pull repository (หรือใช้ GitHub API)
-   ↓
-4. Process Markdown files
-   ↓
-5. Generate embeddings (via Ollama)
-   ↓
-6. Import to ChromaDB (via Backend API)
-   ↓
-7. Send notification (optional)
-```
-
-### Step 3: ใช้ Backend API หรือ Import Script
-
-**Option A: ใช้ Backend API**
-```javascript
-// ใน N8n
+```http
 POST http://localhost:3001/api/documents
 {
-  "id": "doc-123",
-  "content": "...",
-  "metadata": {...}
+  "id": "<filename>-chunk-<index>",
+  "content": "<chunk text>",
+  "metadata": {
+    "source": "wiki",
+    "title": "...",
+    "filePath": "...",
+    "chunkIndex": ...,
+    "totalChunks": ...
+  }
 }
 ```
 
-**Option B: ใช้ Import Script**
+8. Backend ใช้ `ChromaDBService` เพิ่ม document เข้า `rag_documents`
+9. ตอนจบ สคริปต์เรียก `GET /api/documents/info` เพื่อโชว์ `count` และ metadata
+
+**คำสั่งที่ใช้รันด้วยมือ:**
+
 ```bash
-# ใน N8n Execute Command node
-cd /path/to/Backend
+cd Backend
 npm run import:wiki
 ```
 
----
+หลังรันเสร็จ:
 
-## 🔍 เปรียบเทียบ Option A vs Option B
-
-| Feature | ChromaDB Sync | N8n Workflow |
-|---------|---------------|--------------|
-| Setup | ✅ ง่าย (ตั้งค่าใน ChromaDB) | ⚠️ ต้องตั้งค่า N8n |
-| Auto Sync | ✅ อัตโนมัติ | ✅ อัตโนมัติ (via webhook) |
-| Control | ❌ จำกัด | ✅ เต็มที่ |
-| Custom Processing | ❌ ไม่ได้ | ✅ ได้ |
-| Error Handling | ⚠️ จำกัด | ✅ ดีกว่า |
-| Monitoring | ⚠️ จำกัด | ✅ ดีกว่า |
-| Collection | ใช้ collection ที่ ChromaDB สร้าง | ใช้ collection ไหนก็ได้ |
+- ใน ChromaDB → collection `rag_documents` จะเห็น `count` เพิ่มขึ้น
+- สามารถถาม Chatbot ด้วยคำถามที่มีในเอกสารเหล่านั้นได้
 
 ---
 
-## 💡 คำแนะนำ
+## 4️⃣ เชื่อม n8n เพื่อ Trigger Import อัตโนมัติ
 
-### สำหรับ Development/Testing:
-- ✅ ใช้ **ChromaDB Sync** (ง่าย, พร้อมใช้งาน)
+เป้าหมาย: ไม่ต้องกด `npm run import:wiki` เอง ให้ n8n เรียกแทน
 
-### สำหรับ Production:
-- ✅ ใช้ **N8n Workflow** (ควบคุมได้เต็มที่, monitor ได้ดีกว่า)
+### 4.1 Backend Endpoint (ทางเลือกแนะนำ)
 
----
-
-## 📚 เอกสารอ้างอิง
-
-- `WIKI_TEST_SETUP.md` - คู่มือตั้งค่า Wiki.js
-- `Backend/IMPORT_WIKI_GUIDE.md` - คู่มือ import script
-- `HOW_TO_RUN.md` - คู่มือการรันระบบ
-
----
-
-## ✅ Checklist
-
-### Current Setup:
-- [x] Wiki.js → Git (auto sync)
-- [x] Git → ChromaDB (ChromaDB Sync)
-- [x] ChromaDB → RAG API (พร้อมใช้งาน)
-
-### ถ้าต้องการใช้ N8n:
-- [ ] ตั้งค่า GitHub Webhook
-- [ ] สร้าง N8n Workflow
-- [ ] ทดสอบ workflow
-- [ ] ตั้งค่า monitoring/alerting
