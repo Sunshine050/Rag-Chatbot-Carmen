@@ -169,6 +169,7 @@ export class ChromaDBService implements OnModuleInit {
     metadata?: DocumentMetadata,
   ): Promise<void> {
     try {
+      // Generate embedding for the content using Ollama
       const embedding = await this.generateEmbedding(content);
 
       await this.collection.add({
@@ -195,7 +196,7 @@ export class ChromaDBService implements OnModuleInit {
         return;
       }
 
-      // Generate embeddings for all documents
+      // Generate embeddings for all documents using Ollama
       const embeddings = await Promise.all(
         documents.map((doc) => this.generateEmbedding(doc.content)),
       );
@@ -227,10 +228,10 @@ export class ChromaDBService implements OnModuleInit {
     filter?: Record<string, any>,
   ): Promise<SearchResult[]> {
     try {
-      // Generate embedding for the query
+      // Generate embedding for the query using Ollama
       const queryEmbedding = await this.generateEmbedding(query);
 
-      // Build query options
+      // Build query options with embedding vector
       const queryOptions: any = {
         queryEmbeddings: [queryEmbedding],
         nResults: topK,

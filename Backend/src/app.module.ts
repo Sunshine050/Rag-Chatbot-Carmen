@@ -15,3 +15,5 @@ import { ChromaDBService } from './chromadb/chromadb.service';
   providers: [OllamaService, ChromaDBService, RagService],
 })
 export class AppModule {}
+
+
